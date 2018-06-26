@@ -2,6 +2,8 @@
 
 REPO="http://ukosxmltest.mcsaatchi.pri/repo"
 PLIST="/Library/Preferences/ManagedInstalls.plist"
+MANIFESTS_PATH="/Volumes/repo/manifests"
+
 SERIAL_NUMBER=$(ioreg -c IOPlatformExpertDevice -d 2 | awk -F\" '/IOPlatformSerialNumber/{print $(NF-1)}')
 
 CATALOGS=(
@@ -62,7 +64,7 @@ ask () {
 		return 1
 		;;
 	    q|Q)
-		clear
+		echo
 		exit 0
 		;;
 	    *)
@@ -178,22 +180,45 @@ get_manifests () {
 
 add_catalogs () {
     for c in "${SELECTED_CATALOGS[@]}"; do
-	echo "Adding $SERIAL_NUMBER to $c catalog..."
+	echo "Adding $c to catalogs of $SERIAL_NUMBER..."
 	manifestutil add-catalog "$c" --manifest "$SERIAL_NUMBER"
     done
 }
 
 add_manifests () {
     for m in "${SELECTED_MANIFESTS[@]}"; do
-	echo "Including $m in $SERIAL_NUMBER manifest..."
+	echo "Adding $m to included manifests of $SERIAL_NUMBER..."
 	manifestutil add-included-manifest "$m" --manifest "$SERIAL_NUMBER"
     done
 }
 
-make_catalogs () {
-    echo "Making catalogs..."
-    makecatalogs &>/dev/null
+# may come in handy...
+# query_plist () {
+#     key="$1"
+#     path="$2"
+#     value=$(plutil -extract "$key" xml1 -o - "$path" | awk -F '<|>' '/string/ {print $3}')
+#     echo "$value"
+# }
+
+add_plistkeys () {
+    user=$(whoami)
+    host=$(hostname -s)
+    manifest_path="$MANIFESTS_PATH/$SERIAL_NUMBER"
+
+    if [[ -f "$manifest_path" ]]; then
+	echo "Setting $host as Display Name..."
+	plutil -insert display_name -string "$host" "$manifest_path"
+	echo "Setting $user as User Name..."
+	plutil -insert user -string "$user" "$manifest_path"
+    else
+	echo "Cannot find $manifest_path. Is the repository mounted?"
+    fi
 }
+
+# make_catalogs () {
+#     echo "Making catalogs..."
+#     makecatalogs &>/dev/null
+# }
 
 display_manifest () {
     echo "Newly created manifest details:"
@@ -212,7 +237,9 @@ automate () {
     echo
     add_manifests
     echo
-    make_catalogs
+    add_plistkeys
+    # echo
+    # make_catalogs
     echo
     display_manifest
     echo
@@ -224,6 +251,7 @@ interactive () {
     makeq="Would you like to create a new manifest? "
     addcatq="Would you like to add catalogs to this manifest? "
     addmanq="Would you like to add included manifests to this manifest? "
+    addplistq="Would you like to add Display Name and User fields to this manifest? "
     checkq="Would you like to check for available software? "
     installq="Would you like to install all available software? "
 
@@ -233,32 +261,41 @@ interactive () {
     echo
     ask "$addmanq" && { get_manifests; clear; echo; add_manifests; }
     echo
+    ask "$addplistq" && add_plistkeys
+    # echo
+    # make_catalogs
+    echo
     display_manifest
     echo
     if ask "$checkq"; then
 	echo
-	echo "Checking for available software..."
+	echo "Checking for available managed installs..."
 	echo
 	software=("$(sudo managedsoftwareupdate --checkonly | awk '/\+/ {print $2}')")
-	echo "Available Software:"
+	if [[ $(echo "${#software[@]}") =~ ^\s+$ ]]; then
+	    echo "Available Managed Installs:"
+	    echo
+	    for i in "${software[@]}"; do
+		printf "\\t%s\\n" "$i"
+	    done
+	    echo
+	    if ask "$installq"; then
+		sudo managedsoftwareupdate --installonly | sed '1,4d;$d' # get rid of output header & footer
+	    fi
+	else
+	    echo "You have all available managed installs."
+	    echo "Please check the Managed Software Center app to browse optional installs."
+	fi
 	echo
-	for i in "${software[@]}"; do
-	    printf "\\t%s\\n" "$i"
-	done
     fi
-    echo
-    if ask "$installq"; then
-	sudo managedsoftwareupdate --installonly
-    fi
-    echo
 }
 
 main () {
+    clear
+    # echo
+    # add_repo
+    echo
     if [[ ! -z "$1" ]]; then
-	clear
-	echo
-	add_repo
-	echo
 	case "$1" in
 	    -a|--automate)
 		automate
