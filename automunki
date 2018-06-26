@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+REPO="http://ukosxmltest.mcsaatchi.pri/repo"
+PLIST="/Library/Preferences/ManagedInstalls.plist"
 SERIAL_NUMBER=$(ioreg -c IOPlatformExpertDevice -d 2 | awk -F\" '/IOPlatformSerialNumber/{print $(NF-1)}')
 
 CATALOGS=(
@@ -90,7 +92,7 @@ get_selection () {
 	echo "Enter a to toggle all, r to reset selection or q to quit."
 	echo
 	for i in "${!options[@]}"; do
-	    printf "%3d%s) %s\n" $((i+1)) "${choices[i]:- }" "${options[i]}"
+	    printf "%3d%s) %s\\n" $((i+1)) "${choices[i]:- }" "${options[i]}"
 	done
 	echo
 
@@ -147,6 +149,16 @@ get_selection () {
     done
 }
 
+add_repo () {
+    repo=$(defaults read "$PLIST" SoftwareRepoURL)
+    if [[ "$repo" != "$REPO" ]]; then
+	echo "Setting repository URL to $REPO in $PLIST."
+	sudo defaults write "$PLIST" SoftwareRepoURL "$REPO"
+    else
+	echo "Repository URL already set to $REPO in $PLIST."
+    fi
+}
+
 make_manifest () {
     echo "Creating new manifest called $SERIAL_NUMBER"
     manifestutil new-manifest "$SERIAL_NUMBER"
@@ -189,8 +201,6 @@ display_manifest () {
 }
 
 automate () {
-    clear
-    echo
     make_manifest
     echo
     get_catalogs
@@ -206,7 +216,7 @@ automate () {
     echo
     display_manifest
     echo
-    sudo managedsoftwareupdate --installonly
+    sudo managedsoftwareupdate --auto
     echo
 }
 
@@ -217,8 +227,6 @@ interactive () {
     checkq="Would you like to check for available software? "
     installq="Would you like to install all available software? "
 
-    clear
-    echo
     ask "$makeq" && make_manifest
     echo
     ask "$addcatq" && { get_catalogs; clear; echo; add_catalogs; }
@@ -231,11 +239,11 @@ interactive () {
 	echo
 	echo "Checking for available software..."
 	echo
-	software=($(sudo managedsoftwareupdate --checkonly | awk '/\+/ {print $2}'))
+	software=("$(sudo managedsoftwareupdate --checkonly | awk '/\+/ {print $2}')")
 	echo "Available Software:"
 	echo
 	for i in "${software[@]}"; do
-	    printf "\t%s\n" "$i"
+	    printf "\\t%s\\n" "$i"
 	done
     fi
     echo
@@ -247,6 +255,10 @@ interactive () {
 
 main () {
     if [[ ! -z "$1" ]]; then
+	clear
+	echo
+	add_repo
+	echo
 	case "$1" in
 	    -a|--automate)
 		automate
