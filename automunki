@@ -3,23 +3,45 @@
 SERIAL_NUMBER=$(ioreg -c IOPlatformExpertDevice -d 2 | awk -F\" '/IOPlatformSerialNumber/{print $(NF-1)}')
 
 CATALOGS=(
+    "Choose catalogs to add $SERIAL_NUMBER to:"
     "all"
     "Creative"
     "Deployments"
     "IT_Testing"
     "Mobile"
     "SportsAndEnts"
-    "Quit"
 )
 
 MANIFESTS=(
+    "Choose reference manifests to include for $SERIAL_NUMBER:"
     "Creative"
     "Deployment"
     "ITTesting"
     "Mobile"
     "SportsAndEnts"
-    "Quit"
 )
+
+usage () {
+    echo "
+$(basename "$0") [OPTION]
+
+AUTOMATED MUNKI CLIENT CONFIGURATION
+------------------------------------
+
+This script must be run with one of the following options.
+
+Options:
+  -a, --automate	Automate all tasks without prompting.
+  -i, --interactive	Ask before each task.
+
+Tasks:
+  1) Create new Munki manifest with machine's serial number as name.
+  2) Choose catalogs to add newly created manifest to.
+  3) Choose included manifests to add to newly created manifest.
+  4) Check for and display available software (-i only)
+  5) Install all available software.
+"
+}
 
 # infinite loop to get simple user input
 ask () {
@@ -50,43 +72,19 @@ ask () {
     done
 }
 
-# infinite loop that creates menu from array given as argument
-# menu () {
-#     PS3="Enter Number: " # select menu prompt
-#     local -i last_element_index=$(($#-1))
-#     local quit=false
-
-#     while ! "$quit"; do   # while wrapper to redisplay menu on error
-#	select option; do # in "$@" is the default
-
-#	    # if quit is selected, exit, else if reply is an integer and less than
-#	    # the index of the last element add it to array, else error.
-#	    if [[ "$option" == "Quit" ]]; then
-#		echo "Exiting..."
-#		quit=true
-#		break
-#	    elif [[ "$REPLY" =~ ^[1-9]+$ && "$REPLY" -le "$last_element_index" ]]; then
-#		selected+=("$option")
-#		echo "Added $option."
-#	    else
-#		echo "$REPLY is invalid. Select a number between 1 and $#."
-#		break # we need to break out to the while loop to redisplay the menu
-#	    fi
-
-#	done
-#     done
-# }
-
 # takes an array as an argument and creates a checkbox selection menu for each
 # element of array.
 #
 # returns new array of selected items.
 get_selection () {
-    selectall=false
-    options=("$@")
+    string="$1"
+    shift # short for shift 1 - so rest of items become menu items
+    selectall=false options=("$@") choices=()
 
     while :; do
 	clear
+	echo
+	echo "$string"
 	echo
 	echo "Enter the corresponding number to toggle a selection."
 	echo "Enter a to toggle all, r to reset selection or q to quit."
@@ -155,14 +153,12 @@ make_manifest () {
 }
 
 get_catalogs () {
-    echo "Choose catalogs to add $SERIAL_NUMBER to:"
     get_selection "${CATALOGS[@]}"
     SELECTED_CATALOGS=("${selected[@]}")
     unset selected
 }
 
 get_manifests () {
-    echo "Choose reference manifests to include for $SERIAL_NUMBER:"
     get_selection "${MANIFESTS[@]}"
     SELECTED_MANIFESTS=("${selected[@]}")
     unset selected
@@ -193,27 +189,71 @@ display_manifest () {
 }
 
 main () {
-    echo
-    make_manifest
-    echo
-    get_catalogs
-    echo
-    get_manifests
-    echo
-    add_catalogs
-    echo
-    add_manifests
-    echo
-    make_catalogs
-    echo
-    display_manifest
-    echo
-    if ask "Would you like to check for available software? "; then
-	sudo managedsoftwareupdate --checkonly
-    fi
-    if ask "Would you like to install all available software? "; then
-	sudo managedsoftwareupdate --installonly
-    fi
+    makeq="Would you like to create a new manifest? "
+    addcatq="Would you like to add catalogs to this manifest? "
+    addmanq="Would you like to add included manifests to this manifest? "
+    checkq="Would you like to check for available software? "
+    installq="Would you like to install all available software? "
+
+    case "$1" in
+	-a|--automate)
+	    clear
+	    echo
+	    make_manifest
+	    echo
+	    get_catalogs
+	    echo
+	    get_manifests
+	    clear
+	    echo
+	    add_catalogs
+	    echo
+	    add_manifests
+	    echo
+	    make_catalogs
+	    echo
+	    display_manifest
+	    echo
+	    sudo managedsoftwareupdate --installonly
+	    echo
+	    ;;
+	-i|--interactive)
+	    clear
+	    echo
+	    ask "$makeq" && make_manifest
+	    echo
+	    ask "$addcatq" && { get_catalogs; clear; echo; add_catalogs; sleep 2; }
+	    echo
+	    ask "$addmanq" && { get_manifests; clear; echo; add_manifests; sleep 2; }
+	    echo
+	    display_manifest
+	    echo
+	    if ask "$checkq"; then
+		echo
+		echo "Checking for available software..."
+		echo
+		software=($(sudo managedsoftwareupdate --checkonly | awk '/\+/ {print $2}'))
+		echo "Available Software:"
+		echo
+		for i in "${software[@]}"; do
+		    printf "\t%s\n" "$i"
+		done
+	    fi
+	    echo
+	    if ask "$installq"; then
+		sudo managedsoftwareupdate --installonly
+	    fi
+	    echo
+	    ;;
+	-h|--help)
+	    usage
+	    ;;
+	*)
+	    echo
+	    echo "INVALID OPTION."
+	    usage
+	    ;;
+    esac
 }
 
-main
+main "$@"
