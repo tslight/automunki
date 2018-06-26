@@ -51,7 +51,7 @@ ask () {
 	# -e for readline bindings
 	# -r to not mangle backslashes
 	# -n 1 for execution without return
-	read -n 1 -rep "$question" ans;
+	read -rep "$question" ans;
 	case $ans in
 	    y|Y)
 		return 0
@@ -188,72 +188,84 @@ display_manifest () {
     manifestutil display-manifest "$SERIAL_NUMBER"
 }
 
-main () {
+automate () {
+    clear
+    echo
+    make_manifest
+    echo
+    get_catalogs
+    echo
+    get_manifests
+    clear
+    echo
+    add_catalogs
+    echo
+    add_manifests
+    echo
+    make_catalogs
+    echo
+    display_manifest
+    echo
+    sudo managedsoftwareupdate --installonly
+    echo
+}
+
+interactive () {
     makeq="Would you like to create a new manifest? "
     addcatq="Would you like to add catalogs to this manifest? "
     addmanq="Would you like to add included manifests to this manifest? "
     checkq="Would you like to check for available software? "
     installq="Would you like to install all available software? "
 
-    case "$1" in
-	-a|--automate)
-	    clear
-	    echo
-	    make_manifest
-	    echo
-	    get_catalogs
-	    echo
-	    get_manifests
-	    clear
-	    echo
-	    add_catalogs
-	    echo
-	    add_manifests
-	    echo
-	    make_catalogs
-	    echo
-	    display_manifest
-	    echo
-	    sudo managedsoftwareupdate --installonly
-	    echo
-	    ;;
-	-i|--interactive)
-	    clear
-	    echo
-	    ask "$makeq" && make_manifest
-	    echo
-	    ask "$addcatq" && { get_catalogs; clear; echo; add_catalogs; sleep 2; }
-	    echo
-	    ask "$addmanq" && { get_manifests; clear; echo; add_manifests; sleep 2; }
-	    echo
-	    display_manifest
-	    echo
-	    if ask "$checkq"; then
+    clear
+    echo
+    ask "$makeq" && make_manifest
+    echo
+    ask "$addcatq" && { get_catalogs; clear; echo; add_catalogs; }
+    echo
+    ask "$addmanq" && { get_manifests; clear; echo; add_manifests; }
+    echo
+    display_manifest
+    echo
+    if ask "$checkq"; then
+	echo
+	echo "Checking for available software..."
+	echo
+	software=($(sudo managedsoftwareupdate --checkonly | awk '/\+/ {print $2}'))
+	echo "Available Software:"
+	echo
+	for i in "${software[@]}"; do
+	    printf "\t%s\n" "$i"
+	done
+    fi
+    echo
+    if ask "$installq"; then
+	sudo managedsoftwareupdate --installonly
+    fi
+    echo
+}
+
+main () {
+    if [[ ! -z "$1" ]]; then
+	case "$1" in
+	    -a|--automate)
+		automate
+		;;
+	    -i|--interactive)
+		interactive
+		;;
+	    -h|--help)
+		usage
+		;;
+	    *)
 		echo
-		echo "Checking for available software..."
-		echo
-		software=($(sudo managedsoftwareupdate --checkonly | awk '/\+/ {print $2}'))
-		echo "Available Software:"
-		echo
-		for i in "${software[@]}"; do
-		    printf "\t%s\n" "$i"
-		done
-	    fi
-	    echo
-	    if ask "$installq"; then
-		sudo managedsoftwareupdate --installonly
-	    fi
-	    echo
-	    ;;
-	-h|--help)
-	    usage
-	    ;;
-	*)
-	    echo
-	    echo "INVALID OPTION."
-	    usage
-	    ;;
-    esac
+		echo "INVALID OPTION."
+		usage
+		;;
+	esac
+    else
+	interactive
+    fi
 }
 
 main "$@"
