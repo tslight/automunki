@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+
+SERIAL_NUMBER=$(ioreg -c IOPlatformExpertDevice -d 2 | awk -F\" '/IOPlatformSerialNumber/{print $(NF-1)}')
+
+CATALOGS=(
+    "all"
+    "Creative"
+    "Deployments"
+    "IT_Testing"
+    "Mobile"
+    "SportsAndEnts"
+    "Quit"
+)
+
+MANIFESTS=(
+    "Creative"
+    "Deployment"
+    "ITTesting"
+    "Mobile"
+    "SportsAndEnts"
+    "Quit"
+)
+
+# infinite loop to get simple user input
+ask () {
+    local question="$1"
+
+    while :; do
+	# -e for readline bindings
+	# -r to not mangle backslashes
+	# -n 1 for execution without return
+	read -n 1 -rep "$question" ans;
+	case $ans in
+	    y|Y)
+		return 0
+		;;
+	    n|N)
+		return 1
+		;;
+	    q|Q)
+		clear
+		exit 0
+		;;
+	    *)
+		echo
+		echo "$ans is invalid. Enter (y)es, (n)o or (q)uit."
+		echo
+		;;
+	esac
+    done
+}
+
+# infinite loop that creates menu from array given as argument
+# menu () {
+#     PS3="Enter Number: " # select menu prompt
+#     local -i last_element_index=$(($#-1))
+#     local quit=false
+
+#     while ! "$quit"; do   # while wrapper to redisplay menu on error
+#	select option; do # in "$@" is the default
+
+#	    # if quit is selected, exit, else if reply is an integer and less than
+#	    # the index of the last element add it to array, else error.
+#	    if [[ "$option" == "Quit" ]]; then
+#		echo "Exiting..."
+#		quit=true
+#		break
+#	    elif [[ "$REPLY" =~ ^[1-9]+$ && "$REPLY" -le "$last_element_index" ]]; then
+#		selected+=("$option")
+#		echo "Added $option."
+#	    else
+#		echo "$REPLY is invalid. Select a number between 1 and $#."
+#		break # we need to break out to the while loop to redisplay the menu
+#	    fi
+
+#	done
+#     done
+# }
+
+# takes an array as an argument and creates a checkbox selection menu for each
+# element of array.
+#
+# returns new array of selected items.
+get_selection () {
+    selectall=false
+    options=("$@")
+
+    while :; do
+	clear
+	echo
+	echo "Enter the corresponding number to toggle a selection."
+	echo "Enter a to toggle all, r to reset selection or q to quit."
+	echo
+	for i in "${!options[@]}"; do
+	    printf "%3d%s) %s\n" $((i+1)) "${choices[i]:- }" "${options[i]}"
+	done
+	echo
+
+	[[ "$msg" ]] && { echo "$msg"; echo; }
+
+	read -rep "----> " input
+
+	case "$input" in
+	    A|a)
+		if "$selectall"; then
+		    for i in "${!options[@]}"; do
+			choices[i]=""
+		    done
+		    selectall=false
+		else
+		    for i in "${!options[@]}"; do
+			choices[i]="+"
+		    done
+		    selectall=true
+		fi
+		;;
+	    Q|q)
+		break
+		;;
+	    R|r)
+		for i in "${!options[@]}"; do
+		    choices[i]=""
+		done
+		;;
+	    *)
+		# regex to catch digits between 1-99, but number must be less than size of array
+		if ! [[ "$input" =~ ^[1-9]$|^[1-9][0-9]+$ && "$input" -le "${#options[@]}" ]]; then
+		    msg="Invalid option: $input"
+		    continue
+		fi
+		((input--))
+		if [[ "${choices[input]}" ]]; then
+		    choices[input]=""
+		else
+		    choices[input]="+"
+		fi
+		for i in "${!options[@]}"; do
+		    if [[ "${choices[i]}" == "" ]]; then
+			selectall=false
+		    elif [[ "${choices[i]}" == "+" ]]; then
+			selectall=true
+		    fi
+		done
+		;;
+	esac
+    done
+    for i in "${!options[@]}"; do
+	[[ "${choices[i]}" ]] && selected+=("${options[i]}")
+    done
+}
+
+make_manifest () {
+    echo "Creating new manifest called $SERIAL_NUMBER"
+    manifestutil new-manifest "$SERIAL_NUMBER"
+}
+
+get_catalogs () {
+    echo "Choose catalogs to add $SERIAL_NUMBER to:"
+    get_selection "${CATALOGS[@]}"
+    SELECTED_CATALOGS=("${selected[@]}")
+    unset selected
+}
+
+get_manifests () {
+    echo "Choose reference manifests to include for $SERIAL_NUMBER:"
+    get_selection "${MANIFESTS[@]}"
+    SELECTED_MANIFESTS=("${selected[@]}")
+    unset selected
+}
+
+add_catalogs () {
+    for c in "${SELECTED_CATALOGS[@]}"; do
+	echo "Adding $SERIAL_NUMBER to $c catalog..."
+	manifestutil add-catalog "$c" --manifest "$SERIAL_NUMBER"
+    done
+}
+
+add_manifests () {
+    for m in "${SELECTED_MANIFESTS[@]}"; do
+	echo "Including $m in $SERIAL_NUMBER manifest..."
+	manifestutil add-included-manifest "$m" --manifest "$SERIAL_NUMBER"
+    done
+}
+
+make_catalogs () {
+    echo "Making catalogs..."
+    makecatalogs &>/dev/null
+}
+
+display_manifest () {
+    echo "Newly created manifest details:"
+    manifestutil display-manifest "$SERIAL_NUMBER"
+}
+
+main () {
+    echo
+    make_manifest
+    echo
+    get_catalogs
+    echo
+    get_manifests
+    echo
+    add_catalogs
+    echo
+    add_manifests
+    echo
+    make_catalogs
+    echo
+    display_manifest
+    echo
+    if ask "Would you like to check for available software? "; then
+	sudo managedsoftwareupdate --checkonly
+    fi
+    if ask "Would you like to install all available software? "; then
+	sudo managedsoftwareupdate --installonly
+    fi
+}
+
+main
