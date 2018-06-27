@@ -72,22 +72,9 @@ checkdir () {
 #                           SHARE MOUNTING FUNCTIONS                          #
 ###############################################################################
 
-# read in mount_smbfs url
-getshare () {
-    local arg="$1"
-    local host path user pass
-
-    if [[ -z "$arg" ]]; then
-	# -r to avoid mangled backslashes, -e for readline, -s for no echo
-	read -rep "Share Hostname or IP Address: " host
-	read -rep "Share Path: " path
-	SHARE="//$host/$path"
-    else
-	SHARE="$arg"
-    fi
-}
-
 mountshare () {
+    local share="$1"
+
     # .* is egrep AND/this search string followed by this search string.
     if ! mount | grep -Eq "$MOUNT"; then
 	checkdir "$MOUNT"
@@ -97,6 +84,22 @@ mountshare () {
 	    exit 1
 	fi
     fi
+}
+
+# read in mount_smbfs url
+getshare () {
+    local arg="$1" share host path user pass
+
+    if [[ -z "$arg" ]]; then
+	# -r to avoid mangled backslashes, -e for readline, -s for no echo
+	read -rep "Share Hostname or IP Address: " host
+	read -rep "Share Path: " path
+	share="//$host/$path"
+    else
+	share="$arg"
+    fi
+
+    mountshare "$share"
 }
 
 ###############################################################################
@@ -288,7 +291,6 @@ main () {
     clear
     checkroot
     getshare "$share"
-    mountshare
     echo
     configure
     echo
