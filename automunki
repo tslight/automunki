@@ -86,7 +86,7 @@ mountshare () {
     fi
 }
 
-# read in mount_smbfs url
+# read in mount_smbfs url if no arg provided
 getshare () {
     local arg="$1" share host path user pass
 
