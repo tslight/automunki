@@ -29,18 +29,12 @@ $(basename "$0") [OPTION]
 AUTOMATED MUNKI CLIENT CONFIGURATION
 ------------------------------------
 
-This script must be run with one of the following options.
+This script must be run as root. It carries out the following tasks:
 
-Options:
-  -a, --automate	Automate all tasks without prompting.
-  -i, --interactive	Ask before each task.
-
-Tasks:
   1) Create new Munki manifest with machine's serial number as name.
-  2) Choose catalogs to add newly created manifest to.
-  3) Choose included manifests to add to newly created manifest.
-  4) Check for and display available software (-i only)
-  5) Install all available software.
+  2) Choose catalogs/included manifests to add newly created manifest to.
+  3) Check for and display available software (-i only)
+  4) Install all available software.
 "
 }
 
