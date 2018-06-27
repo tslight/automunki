@@ -56,56 +56,32 @@ checkdir () {
     fi
 }
 
-checkmount () {
-    local share
-
-    case "$FS" in
-	nfs)
-	    share="$SHARE"
-	    mountshare "$share"
-	    ;;
-	smbfs)
-	    # cut out password of samba mount
-	    share="${SHARE%:*}@${SHARE#*@}" # equivalent to sed 's/\:.*@/@/')
-	    mountshare "$share"
-	    OPTS=("${SMBOPTS[@]}")
-	    ;;
-    esac
-}
-
-# read in mount_smbfs url
-getsmb () {
-    local smbhost smbpath smbuser smbpass
-
-    # -r to avoid mangled backslashes, -e for readline, -s for no echo
-    read -rep "Enter SMB Hostname or IP Address: " smbhost
-    read -rep "Enter SMB Path: " smbpath
-    read -rep "Enter SMB User Name: " smbuser
-    read -resp "Enter SMB Password (will not echo): " smbpass
-
-    # not marking readonly yet so we can escape invalid chars...
-    readonly FS="smbfs"
-    readonly SHARE="//$smbuser:$smbpass@$smbhost/$smbpath"
-}
-
 mountshare () {
-    local share="$1"
-
     # .* is egrep AND/this search string followed by this search string.
-    if ! mount | grep -Eq "$share.*$MOUNT"; then
+    if ! mount | grep -Eq "$MOUNT"; then
 	checkdir "$MOUNT"
 	# escape spaces in url encoding - http://www.degraeve.com/reference/urlencoding.php
-	if ! mount -t "$FS" "${SHARE// /%20}" "$MOUNT"; then
-	    echo "Could not mount $share at $MOUNT. Aborting."
+	if ! mount -t smbfs "${SHARE// /%20}" "$MOUNT"; then
+	    echo "Could not mount $SHARE at $MOUNT. Aborting."
 	    exit 1
 	fi
     fi
 }
 
-mountrepo () {
-    getsmb
-    echo
-    checkmount
+# read in mount_smbfs url
+getshare () {
+    local arg="$1"
+    local host path user pass
+
+    if [[ -z "$arg" ]]; then
+	# -r to avoid mangled backslashes, -e for readline, -s for no echo
+	read -rep "Share Hostname or IP Address: " host
+	read -rep "Share Path: " path
+	SHARE="//$host/$path"
+    else
+	SHARE="$arg"
+    fi
+    mountshare
 }
 
 # infinite loop to get simple user input
@@ -269,49 +245,30 @@ add_plistkeys () {
     fi
 }
 
-# make_catalogs () {
-#     echo "Making catalogs..."
-#     makecatalogs &>/dev/null
-# }
-
 display_manifest () {
     echo "Newly created manifest details:"
     manifestutil display-manifest "$SERIAL_NUMBER"
 }
 
-automate () {
-    make_manifest
-    echo
-    get_catalogs
-    echo
-    add_catalogs
-    echo
-    add_manifests
-    echo
-    add_plistkeys
-    echo
-    display_manifest
-    echo
-    managedsoftwareupdate --checkonly | awk '/\+/ {print $2}' # only show software, no munki cruft
-    echo
-    managedsoftwareupdate --installonly | sed '1,4d;$d' # get rid of output header & footer
-    echo
-}
+main () {
+    local share="$1"
+    local makeq="Create new manifest? "
+    local addcatq="Add catalogs to manifest? "
+    local addplistq="Add display name and user fields to manifest? "
+    local checkq="Check for available software? "
+    local installq="Install all available software? "
 
-interactive () {
-    makeq="Create new manifest? "
-    addcatq="Add catalogs to manifest? "
-    addplistq="Add display name and user fields to manifest? "
-    checkq="Check for available software? "
-    installq="Install all available software? "
-
+    clear
+    checkroot
+    getshare "$share"
+    echo
+    configure
+    echo
     ask "$makeq" && make_manifest
     echo
     ask "$addcatq" && { get_catalogs; clear; echo; add_catalogs; }
     echo
     ask "$addplistq" && add_plistkeys
-    # echo
-    # make_catalogs
     echo
     display_manifest
     echo
@@ -335,36 +292,6 @@ interactive () {
 	    echo "Please check the Managed Software Center app to browse optional installs."
 	fi
 	echo
-    fi
-}
-
-main () {
-    clear
-    checkroot
-    echo
-    mountrepo
-    echo
-    configure
-    echo
-    if [[ ! -z "$1" ]]; then
-	case "$1" in
-	    -a|--automate)
-		automate
-		;;
-	    -i|--interactive)
-		interactive
-		;;
-	    -h|--help)
-		usage
-		;;
-	    *)
-		echo
-		echo "INVALID OPTION."
-		usage
-		;;
-	esac
-    else
-	interactive
     fi
 }
 
