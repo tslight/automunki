@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 
-REPO="http://ukosxmltest.mcsaatchi.pri/repo"
+MOUNT="/Volumes/MunkiRepo"
 PLIST="/Library/Preferences/ManagedInstalls.plist"
-MANIFESTS_PATH="/Volumes/repo/manifests"
+MANIFESTS_PATH="$MOUNT/manifests"
 
 SERIAL_NUMBER=$(ioreg -c IOPlatformExpertDevice -d 2 | awk -F\" '/IOPlatformSerialNumber/{print $(NF-1)}')
 
 CATALOGS=(
     "Choose catalogs to add $SERIAL_NUMBER to:"
-    "all"
     "Creative"
     "Deployments"
     "IT_Testing"
@@ -16,14 +15,15 @@ CATALOGS=(
     "SportsAndEnts"
 )
 
-MANIFESTS=(
-    "Choose reference manifests to include for $SERIAL_NUMBER:"
-    "Creative"
-    "Deployment"
-    "ITTesting"
-    "Mobile"
-    "SportsAndEnts"
-)
+# redundant now that reference manifest and catalog namespace is consistent.
+# MANIFESTS=(
+#     "Choose reference manifests to include for $SERIAL_NUMBER:"
+#     "Creative"
+#     "Deployment"
+#     "ITTesting"
+#     "Mobile"
+#     "SportsAndEnts"
+# )
 
 usage () {
     echo "
@@ -45,6 +45,60 @@ Tasks:
   4) Check for and display available software (-i only)
   5) Install all available software.
 "
+}
+
+checkroot () {
+    if [[ "$(id -u)" -ne 0 ]]; then
+	echo
+	echo "This script must be run as root."
+	usage
+	exit 1
+    fi
+}
+
+checkdir () {
+    local dir="$1"
+    if [[ ! -d "$dir" ]]; then
+	if ! mkdir -p "$dir"; then
+	    echo "Error creating $dir";
+	    exit 1
+	fi
+    fi
+}
+
+# read in mount_smbfs url
+getsmb () {
+    local smbhost smbpath smbuser smbpass
+
+    # -r to avoid mangled backslashes, -e for readline, -s for no echo
+    read -rep "Enter SMB Hostname or IP Address: " smbhost
+    read -rep "Enter SMB Path: " smbpath
+    read -rep "Enter SMB User Name: " smbuser
+    read -resp "Enter SMB Password (will not echo): " smbpass
+
+    # not marking readonly yet so we can escape invalid chars...
+    readonly FS="smbfs"
+    readonly SHARE="//$smbuser:$smbpass@$smbhost/$smbpath"
+}
+
+mountshare () {
+    local share="$1"
+
+    # .* is egrep AND/this search string followed by this search string.
+    if ! mount | grep -Eq "$share.*$MOUNT"; then
+	checkdir "$MOUNT"
+	# escape spaces in url encoding - http://www.degraeve.com/reference/urlencoding.php
+	if ! mount -t "$FS" "${SHARE// /%20}" "$MOUNT"; then
+	    echo "Could not mount $share at $MOUNT. Aborting."
+	    exit 1
+	fi
+    fi
+}
+
+mountrepo () {
+    getsmb
+    echo
+    mountshare
 }
 
 # infinite loop to get simple user input
@@ -151,14 +205,18 @@ get_selection () {
     done
 }
 
-add_repo () {
-    repo=$(defaults read "$PLIST" SoftwareRepoURL)
-    if [[ "$repo" != "$REPO" ]]; then
-	echo "Setting repository URL to $REPO in $PLIST."
-	sudo defaults write "$PLIST" SoftwareRepoURL "$REPO"
-    else
-	echo "Repository URL already set to $REPO in $PLIST."
-    fi
+# add_repo () {
+#     repo=$(defaults read "$PLIST" SoftwareRepoURL)
+#     if [[ "$repo" != "$REPO" ]]; then
+#	echo "Setting repository URL to $REPO in $PLIST."
+#	defaults write "$PLIST" SoftwareRepoURL "$REPO"
+#     else
+#	echo "Repository URL already set to $REPO in $PLIST."
+#     fi
+# }
+
+configure () {
+    manifestutil --configure
 }
 
 make_manifest () {
@@ -172,25 +230,29 @@ get_catalogs () {
     unset selected
 }
 
-get_manifests () {
-    get_selection "${MANIFESTS[@]}"
-    SELECTED_MANIFESTS=("${selected[@]}")
-    unset selected
-}
+# redundant now that reference manifest and catalog namespace is consistent.
+# get_manifests () {
+#     get_selection "${MANIFESTS[@]}"
+#     SELECTED_MANIFESTS=("${selected[@]}")
+#     unset selected
+# }
 
 add_catalogs () {
     for c in "${SELECTED_CATALOGS[@]}"; do
 	echo "Adding $c to catalogs of $SERIAL_NUMBER..."
 	manifestutil add-catalog "$c" --manifest "$SERIAL_NUMBER"
+	echo "Adding $c to included manifests of $SERIAL_NUMBER..."
+	manifestutil add-included-manifest "$c" --manifest "$SERIAL_NUMBER"
     done
 }
 
-add_manifests () {
-    for m in "${SELECTED_MANIFESTS[@]}"; do
-	echo "Adding $m to included manifests of $SERIAL_NUMBER..."
-	manifestutil add-included-manifest "$m" --manifest "$SERIAL_NUMBER"
-    done
-}
+# redundant now that reference manifest and catalog namespace is consistent.
+# add_manifests () {
+#     for m in "${SELECTED_MANIFESTS[@]}"; do
+#       echo "Adding $c to included manifests of $SERIAL_NUMBER..."
+#	manifestutil add-included-manifest "$m" --manifest "$SERIAL_NUMBER"
+#     done
+# }
 
 # may come in handy...
 # query_plist () {
@@ -201,15 +263,15 @@ add_manifests () {
 # }
 
 add_plistkeys () {
-    user=$(whoami)
     host=$(hostname -s)
     manifest_path="$MANIFESTS_PATH/$SERIAL_NUMBER"
 
     if [[ -f "$manifest_path" ]]; then
-	echo "Setting $host as Display Name..."
-	plutil -insert display_name -string "$host" "$manifest_path"
-	echo "Setting $user as User Name..."
+	read -rep "Enter a user name: " user
+	echo "Setting $user as user name..."
 	plutil -insert user -string "$user" "$manifest_path"
+	echo "Setting $host as display name..."
+	plutil -insert display_name -string "$host" "$manifest_path"
     else
 	echo "Cannot find $manifest_path. Is the repository mounted?"
     fi
@@ -229,8 +291,8 @@ automate () {
     make_manifest
     echo
     get_catalogs
-    echo
-    get_manifests
+    # echo
+    # get_manifests
     clear
     echo
     add_catalogs
@@ -243,7 +305,7 @@ automate () {
     echo
     display_manifest
     echo
-    sudo managedsoftwareupdate --auto
+    managedsoftwareupdate --auto
     echo
 }
 
@@ -258,8 +320,8 @@ interactive () {
     ask "$makeq" && make_manifest
     echo
     ask "$addcatq" && { get_catalogs; clear; echo; add_catalogs; }
-    echo
-    ask "$addmanq" && { get_manifests; clear; echo; add_manifests; }
+    # echo
+    # ask "$addmanq" && { get_manifests; clear; echo; add_manifests; }
     echo
     ask "$addplistq" && add_plistkeys
     # echo
@@ -271,7 +333,7 @@ interactive () {
 	echo
 	echo "Checking for available managed installs..."
 	echo
-	software=("$(sudo managedsoftwareupdate --checkonly | awk '/\+/ {print $2}')")
+	software=("$(managedsoftwareupdate --checkonly | awk '/\+/ {print $2}')")
 	if [[ $(echo "${#software[@]}") =~ ^\s+$ ]]; then
 	    echo "Available Managed Installs:"
 	    echo
@@ -280,7 +342,7 @@ interactive () {
 	    done
 	    echo
 	    if ask "$installq"; then
-		sudo managedsoftwareupdate --installonly | sed '1,4d;$d' # get rid of output header & footer
+		managedsoftwareupdate --installonly | sed '1,4d;$d' # get rid of output header & footer
 	    fi
 	else
 	    echo "You have all available managed installs."
@@ -292,8 +354,11 @@ interactive () {
 
 main () {
     clear
-    # echo
-    # add_repo
+    checkroot
+    echo
+    mountrepo
+    echo
+    configure
     echo
     if [[ ! -z "$1" ]]; then
 	case "$1" in
