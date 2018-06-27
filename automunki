@@ -24,12 +24,17 @@ CATALOGS=(
 
 usage () {
     echo "
-$(basename "$0") [OPTION]
+$(basename "$0") [AFS or Samba Share URL]
 
 AUTOMATED MUNKI CLIENT CONFIGURATION
 ------------------------------------
 
-This script must be run as root. It carries out the following tasks:
+This script must be run as root.
+
+It takes an AFS or Samba Share as an optional argument. If none are given you
+will be prompted for them.
+
+It carries out the following tasks:
 
   1) Mount Munki repository via Samba or AFS at /Volumes/MunkiRepo.
   2) Create new Munki manifest with machine's serial number as name.
