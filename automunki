@@ -3,7 +3,6 @@
 MOUNT="/Volumes/MunkiRepo"
 PLIST="/Library/Preferences/ManagedInstalls.plist"
 MANIFESTS_PATH="$MOUNT/manifests"
-
 SERIAL_NUMBER=$(ioreg -c IOPlatformExpertDevice -d 2 | awk -F\" '/IOPlatformSerialNumber/{print $(NF-1)}')
 
 CATALOGS=(
@@ -14,16 +13,6 @@ CATALOGS=(
     "Mobile"
     "SportsAndEnts"
 )
-
-# redundant now that reference manifest and catalog namespace is consistent.
-# MANIFESTS=(
-#     "Choose reference manifests to include for $SERIAL_NUMBER:"
-#     "Creative"
-#     "Deployment"
-#     "ITTesting"
-#     "Mobile"
-#     "SportsAndEnts"
-# )
 
 usage () {
     echo "
@@ -58,12 +47,30 @@ checkroot () {
 
 checkdir () {
     local dir="$1"
+
     if [[ ! -d "$dir" ]]; then
 	if ! mkdir -p "$dir"; then
 	    echo "Error creating $dir";
 	    exit 1
 	fi
     fi
+}
+
+checkmount () {
+    local share
+
+    case "$FS" in
+	nfs)
+	    share="$SHARE"
+	    mountshare "$share"
+	    ;;
+	smbfs)
+	    # cut out password of samba mount
+	    share="${SHARE%:*}@${SHARE#*@}" # equivalent to sed 's/\:.*@/@/')
+	    mountshare "$share"
+	    OPTS=("${SMBOPTS[@]}")
+	    ;;
+    esac
 }
 
 # read in mount_smbfs url
@@ -98,7 +105,7 @@ mountshare () {
 mountrepo () {
     getsmb
     echo
-    mountshare
+    checkmount
 }
 
 # infinite loop to get simple user input
@@ -230,13 +237,6 @@ get_catalogs () {
     unset selected
 }
 
-# redundant now that reference manifest and catalog namespace is consistent.
-# get_manifests () {
-#     get_selection "${MANIFESTS[@]}"
-#     SELECTED_MANIFESTS=("${selected[@]}")
-#     unset selected
-# }
-
 add_catalogs () {
     for c in "${SELECTED_CATALOGS[@]}"; do
 	echo "Adding $c to catalogs of $SERIAL_NUMBER..."
@@ -245,14 +245,6 @@ add_catalogs () {
 	manifestutil add-included-manifest "$c" --manifest "$SERIAL_NUMBER"
     done
 }
-
-# redundant now that reference manifest and catalog namespace is consistent.
-# add_manifests () {
-#     for m in "${SELECTED_MANIFESTS[@]}"; do
-#       echo "Adding $c to included manifests of $SERIAL_NUMBER..."
-#	manifestutil add-included-manifest "$m" --manifest "$SERIAL_NUMBER"
-#     done
-# }
 
 # may come in handy...
 # query_plist () {
@@ -291,17 +283,12 @@ automate () {
     make_manifest
     echo
     get_catalogs
-    # echo
-    # get_manifests
-    clear
     echo
     add_catalogs
     echo
     add_manifests
     echo
     add_plistkeys
-    # echo
-    # make_catalogs
     echo
     display_manifest
     echo
@@ -310,18 +297,15 @@ automate () {
 }
 
 interactive () {
-    makeq="Would you like to create a new manifest? "
-    addcatq="Would you like to add catalogs to this manifest? "
-    addmanq="Would you like to add included manifests to this manifest? "
-    addplistq="Would you like to add Display Name and User fields to this manifest? "
-    checkq="Would you like to check for available software? "
-    installq="Would you like to install all available software? "
+    makeq="Create new manifest? "
+    addcatq="Add catalogs to manifest? "
+    addplistq="Add display name and user fields to manifest? "
+    checkq="Check for available software? "
+    installq="Install all available software? "
 
     ask "$makeq" && make_manifest
     echo
     ask "$addcatq" && { get_catalogs; clear; echo; add_catalogs; }
-    # echo
-    # ask "$addmanq" && { get_manifests; clear; echo; add_manifests; }
     echo
     ask "$addplistq" && add_plistkeys
     # echo
