@@ -292,7 +292,9 @@ automate () {
     echo
     display_manifest
     echo
-    managedsoftwareupdate --auto
+    managedsoftwareupdate --checkonly | awk '/\+/ {print $2}' # only show software, no munki cruft
+    echo
+    managedsoftwareupdate --installonly | sed '1,4d;$d' # get rid of output header & footer
     echo
 }
 
