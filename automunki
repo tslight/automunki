@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+###############################################################################
+#                           DECLARE GLOBAL VARIABLES                          #
+###############################################################################
+
 MOUNT="/Volumes/MunkiRepo"
 PLIST="/Library/Preferences/ManagedInstalls.plist"
 MANIFESTS_PATH="$MOUNT/manifests"
@@ -13,6 +17,10 @@ CATALOGS=(
     "Mobile"
     "SportsAndEnts"
 )
+
+###############################################################################
+#                                USAGE FUNCTION                               #
+###############################################################################
 
 usage () {
     echo "
@@ -36,6 +44,10 @@ Tasks:
 "
 }
 
+###############################################################################
+#                        USEFUL SANITY CHECK FUNCTIONS                        #
+###############################################################################
+
 checkroot () {
     if [[ "$(id -u)" -ne 0 ]]; then
 	echo
@@ -56,17 +68,9 @@ checkdir () {
     fi
 }
 
-mountshare () {
-    # .* is egrep AND/this search string followed by this search string.
-    if ! mount | grep -Eq "$MOUNT"; then
-	checkdir "$MOUNT"
-	# escape spaces in url encoding - http://www.degraeve.com/reference/urlencoding.php
-	if ! mount -t smbfs "${SHARE// /%20}" "$MOUNT"; then
-	    echo "Could not mount $SHARE at $MOUNT. Aborting."
-	    exit 1
-	fi
-    fi
-}
+###############################################################################
+#                           SHARE MOUNTING FUNCTIONS                          #
+###############################################################################
 
 # read in mount_smbfs url
 getshare () {
@@ -81,8 +85,23 @@ getshare () {
     else
 	SHARE="$arg"
     fi
-    mountshare
 }
+
+mountshare () {
+    # .* is egrep AND/this search string followed by this search string.
+    if ! mount | grep -Eq "$MOUNT"; then
+	checkdir "$MOUNT"
+	# escape spaces in url encoding - http://www.degraeve.com/reference/urlencoding.php
+	if ! mount -t smbfs "${SHARE// /%20}" "$MOUNT"; then
+	    echo "Could not mount $SHARE at $MOUNT. Aborting."
+	    exit 1
+	fi
+    fi
+}
+
+###############################################################################
+#                             USER INPUT FUNCTIONS                            #
+###############################################################################
 
 # infinite loop to get simple user input
 ask () {
@@ -188,6 +207,10 @@ get_selection () {
     done
 }
 
+###############################################################################
+#                         MUNKI MANIPULATION FUNCTIONS                        #
+###############################################################################
+
 # add_repo () {
 #     repo=$(defaults read "$PLIST" SoftwareRepoURL)
 #     if [[ "$repo" != "$REPO" ]]; then
@@ -250,6 +273,10 @@ display_manifest () {
     manifestutil display-manifest "$SERIAL_NUMBER"
 }
 
+###############################################################################
+#                                MAIN FUNCTION                                #
+###############################################################################
+
 main () {
     local share="$1"
     local makeq="Create new manifest? "
@@ -261,6 +288,7 @@ main () {
     clear
     checkroot
     getshare "$share"
+    mountshare
     echo
     configure
     echo
@@ -294,5 +322,9 @@ main () {
 	echo
     fi
 }
+
+###############################################################################
+#                                     RUN!                                    #
+###############################################################################
 
 main "$@"
