@@ -79,8 +79,8 @@ mountshare () {
     if ! mount | grep -Eq "$MOUNT"; then
 	checkdir "$MOUNT"
 	# escape spaces in url encoding - http://www.degraeve.com/reference/urlencoding.php
-	if ! mount -t smbfs "${SHARE// /%20}" "$MOUNT"; then
-	    echo "Could not mount $SHARE at $MOUNT. Aborting."
+	if ! mount -t smbfs "${share// /%20}" "$MOUNT"; then
+	    echo "Could not mount $share at $MOUNT. Aborting."
 	    exit 1
 	fi
     fi
