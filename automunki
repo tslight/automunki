@@ -31,10 +31,11 @@ AUTOMATED MUNKI CLIENT CONFIGURATION
 
 This script must be run as root. It carries out the following tasks:
 
-  1) Create new Munki manifest with machine's serial number as name.
-  2) Choose catalogs/included manifests to add newly created manifest to.
-  3) Check for and display available software (-i only)
-  4) Install all available software.
+  1) Mount Munki repository via Samba or AFS at /Volumes/MunkiRepo.
+  2) Create new Munki manifest with machine's serial number as name.
+  3) Choose catalogs/included manifests to add newly created manifest to.
+  4) Check for and display available software.
+  5) Install all available software.
 "
 }
 
