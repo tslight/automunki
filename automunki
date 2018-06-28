@@ -228,10 +228,6 @@ spinner () {
 #                         MUNKI MANIPULATION FUNCTIONS                        #
 ###############################################################################
 
-configure () {
-    manifestutil --configure
-}
-
 get_catalogs () {
     get_selection "${CATALOGS[@]}"
     SELECTED_CATALOGS=("${selected[@]}")
@@ -239,7 +235,9 @@ get_catalogs () {
 }
 
 check_manifest () {
-    if ! plutil "$MANIFEST_PLIST"; then
+    if plutil "$MANIFEST_PLIST" > /dev/null; then
+	return 0
+    else
 	echo "Error writing $SERIAL_NUMBER plist."
 	exit 1
     fi
@@ -253,7 +251,7 @@ add_catalogs () {
 	echo "Adding $value to included manifests of $SERIAL_NUMBER..."
 	plutil -insert included_manifests."$key" -string "$value" "$MANIFEST_PLIST"
     done
-    check_manifest
+    check_manifest && echo "Sucessfully added values to $SERIAL_NUMBER manifest."
 }
 
 write_manifest () {
@@ -264,7 +262,7 @@ write_manifest () {
     /usr/libexec/PlistBuddy -c "Add :managed_installs array" "$MANIFEST_PLIST"
     /usr/libexec/PlistBuddy -c "Add :managed_uninstalls array" "$MANIFEST_PLIST"
     /usr/libexec/PlistBuddy -c "Add :user string $user" "$MANIFEST_PLIST"
-    check_manifest
+    check_manifest && echo "Sucessfully created $SERIAL_NUMBER manifest."
 }
 
 make_manifest () {
@@ -306,8 +304,6 @@ main () {
     clear
     checkroot
     getshare "$share"
-    echo
-    configure
     echo
     ask "$makeq" && make_manifest
     echo
