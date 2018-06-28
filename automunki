@@ -4,10 +4,12 @@
 #                           DECLARE CONSTANTS                                 #
 ###############################################################################
 
-MOUNT="/Volumes/MunkiRepo"
-PLIST="/Library/Preferences/ManagedInstalls.plist"
-MANIFESTS_PATH="$MOUNT/manifests"
+HOSTNAME=$(hostname -s)
 SERIAL_NUMBER=$(ioreg -c IOPlatformExpertDevice -d 2 | awk -F\" '/IOPlatformSerialNumber/{print $(NF-1)}')
+
+MOUNT="/Volumes/MunkiRepo"
+MANIFESTS_DIR="$MOUNT/manifests"
+MANIFEST_PLIST="$MANIFESTS_DIR/$SERIAL_NUMBER"
 
 CATALOGS=(
     "Choose catalogs to add $SERIAL_NUMBER to:"
@@ -226,23 +228,8 @@ spinner () {
 #                         MUNKI MANIPULATION FUNCTIONS                        #
 ###############################################################################
 
-add_repo () {
-    repo=$(defaults read "$PLIST" SoftwareRepoURL)
-    if [[ "$repo" != "$REPO" ]]; then
-	echo "Setting repository URL to $REPO in $PLIST."
-	defaults write "$PLIST" SoftwareRepoURL "$REPO"
-    else
-	echo "Repository URL already set to $REPO in $PLIST."
-    fi
-}
-
 configure () {
     manifestutil --configure
-}
-
-make_manifest () {
-    echo "Creating new manifest called $SERIAL_NUMBER"
-    manifestutil new-manifest "$SERIAL_NUMBER"
 }
 
 get_catalogs () {
@@ -252,64 +239,41 @@ get_catalogs () {
 }
 
 add_catalogs () {
-    for c in "${!SELECTED_CATALOGS[@]}"; do
-	echo "Adding ${SELECTED_CATALOGS[$c]} to catalogs of $SERIAL_NUMBER..."
-	# manifestutil add-catalog "$c" --manifest "$SERIAL_NUMBER"
-	plutil -insert catalogs."$c" -string '"${SELECTED_CATALOGS[$c]}"' "$manifest_path"
-	echo "Adding $c to included manifests of $SERIAL_NUMBER..."
-	# manifestutil add-included-manifest "$c" --manifest "$SERIAL_NUMBER"
-	plutil -insert included_manifests."$c" -string '"${SELECTED_CATALOGS[$c]}"' "$manifest_path"
+    for key in "${!SELECTED_CATALOGS[@]}"; do
+	value="${SELECTED_CATALOGS[$key]}"
+	echo "Adding $value to catalogs of $SERIAL_NUMBER..."
+	plutil -insert catalogs."$key" -string "$value" "$MANIFEST_PLIST"
+	echo "Adding $value to included manifests of $SERIAL_NUMBER..."
+	plutil -insert included_manifests."$key" -string "$value" "$MANIFEST_PLIST"
     done
 }
 
-# may come in handy...
-query_plist () {
-    key="$1"
-    path="$2"
-    value=$(plutil -extract "$key" xml1 -o - "$path" | awk -F '<|>' '/string/ {print $3}')
-    echo "$value"
-}
-buildplist () {
-    local user host
-    AUTHOR="$1"
-    cat > foo.plist <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>catalogs</key>
-	<array>
-		<string>Deployments</string>
-	</array>
-	<key>display_name</key>
-	<string>mai-02586</string>
-	<key>included_manifests</key>
-	<array>
-		<string>Deployments</string>
-	</array>
-	<key>managed_installs</key>
-	<array/>
-	<key>managed_uninstalls</key>
-	<array/>
-	<key>user</key>
-	<string>toby.slight</string>
-</dict>
-</plist>
-EOF
+write_manifest () {
+    read -rep "Enter a user name: " user
+    /usr/libexec/PlistBuddy -c "Add :catalogs array" "$MANIFEST_PLIST" > /dev/null
+    /usr/libexec/PlistBuddy -c "Add :display_name string $HOSTNAME" "$MANIFEST_PLIST"
+    /usr/libexec/PlistBuddy -c "Add :included_manifests array" "$MANIFEST_PLIST"
+    /usr/libexec/PlistBuddy -c "Add :managed_installs array" "$MANIFEST_PLIST"
+    /usr/libexec/PlistBuddy -c "Add :managed_uninstalls array" "$MANIFEST_PLIST"
+    /usr/libexec/PlistBuddy -c "Add :user string $user" "$MANIFEST_PLIST"
 }
 
-add_plistkeys () {
-    host=$(hostname -s)
-    manifest_path="$MANIFESTS_PATH/$SERIAL_NUMBER"
+make_manifest () {
+    local sanityq="$SERIAL_NUMBER already exists. Are you sure you want to overwrite it?! "
 
-    if [[ -f "$manifest_path" ]]; then
-	read -rep "Enter a user name: " user
-	echo "Setting $user as user name..."
-	plutil -insert user -string "$user" "$manifest_path"
-	echo "Setting $host as display name..."
-	plutil -insert display_name -string "$host" "$manifest_path"
+    if [[ -d "$MANIFESTS_DIR" ]]; then
+	if [[ -f "$MANIFEST_PLIST" ]]; then
+	    if ask "$sanityq"; then
+		rm "$MANIFEST_PLIST"
+		write_manifest
+	    else
+		echo "Leaving $MANIFEST_PLIST unchanged."
+	    fi
+	else
+	    write_manifest
+	fi
     else
-	echo "Cannot find $manifest_path. Is the repository mounted?"
+	echo "Cannot find $MANIFESTS_DIR. Is the repository mounted?"
     fi
 }
 
@@ -339,8 +303,6 @@ main () {
     ask "$makeq" && make_manifest
     echo
     ask "$addcatq" && { get_catalogs; clear; echo; add_catalogs; }
-    echo
-    ask "$addplistq" && add_plistkeys
     echo
     display_manifest
     echo
