@@ -238,6 +238,13 @@ get_catalogs () {
     unset selected
 }
 
+check_manifest () {
+    if ! plutil "$MANIFEST_PLIST"; then
+	echo "Error writing $SERIAL_NUMBER plist."
+	exit 1
+    fi
+}
+
 add_catalogs () {
     for key in "${!SELECTED_CATALOGS[@]}"; do
 	value="${SELECTED_CATALOGS[$key]}"
@@ -246,6 +253,7 @@ add_catalogs () {
 	echo "Adding $value to included manifests of $SERIAL_NUMBER..."
 	plutil -insert included_manifests."$key" -string "$value" "$MANIFEST_PLIST"
     done
+    check_manifest
 }
 
 write_manifest () {
@@ -256,6 +264,7 @@ write_manifest () {
     /usr/libexec/PlistBuddy -c "Add :managed_installs array" "$MANIFEST_PLIST"
     /usr/libexec/PlistBuddy -c "Add :managed_uninstalls array" "$MANIFEST_PLIST"
     /usr/libexec/PlistBuddy -c "Add :user string $user" "$MANIFEST_PLIST"
+    check_manifest
 }
 
 make_manifest () {
