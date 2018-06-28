@@ -48,12 +48,12 @@ It carries out the following tasks:
 #                           SHARE MOUNTING FUNCTIONS                          #
 ###############################################################################
 
-mountshare () {
+mount_share () {
     local share="$1"
 
     # .* is egrep AND/this search string followed by this search string.
     if ! mount | grep -Eq "$MOUNT"; then
-	checkdir "$MOUNT"
+	check_dir "$MOUNT"
 	# escape spaces in url encoding - http://www.degraeve.com/reference/urlencoding.php
 	if ! mount -t smbfs "${share// /%20}" "$MOUNT"; then
 	    echo "Could not mount $share at $MOUNT. Aborting."
@@ -63,7 +63,7 @@ mountshare () {
 }
 
 # read in mount_smbfs url if no arg provided, return share url
-getshare () {
+get_share () {
     local arg="$1" share host path user pass
 
     if [[ -z "$arg" ]]; then
@@ -112,7 +112,7 @@ ask () {
 }
 
 # check for existence of a directory and if it doesn't exist create it.
-checkdir () {
+check_dir () {
     local dir="$1"
 
     if [[ ! -d "$dir" ]]; then
@@ -124,7 +124,7 @@ checkdir () {
 }
 
 # check if running as root
-checkroot () {
+check_root () {
     if [[ "$(id -u)" -ne 0 ]]; then
 	echo;
 	echo "This script must be run as root."
@@ -135,7 +135,7 @@ checkroot () {
 
 # takes an array as an argument and creates a checkbox selection menu for each
 # element of array. returns new array of selected items.
-get_selection () {
+get_selections () {
     local string="$1"; shift # reset first index of array to next element
     local selectall=false
     local -a options=("$@") choices=()
@@ -268,7 +268,7 @@ add_catalogs () {
 }
 
 get_catalogs () {
-    get_selection "${CATALOGS[@]}"
+    get_selections "${CATALOGS[@]}"
     SELECTED_CATALOGS=("${selected[@]}")
     unset selected
 }
@@ -278,20 +278,19 @@ get_catalogs () {
 ###############################################################################
 
 main () {
-    local share=$(getshare "$1")
-    local makeq="Create new manifest? "
-    local addcatq="Add catalogs to manifest? "
-    local addplistq="Add display name and user fields to manifest? "
-    local checkq="Check for available software? "
-    local installq="Install all available software/check for updates? "
+    local share=$(get_share "$1")
+    local make_manifest_question="Create new manifest? "
+    local add_catalogs_question="Add catalogs to manifest? "
+    local check_sw_question="Check for available software? "
+    local install_sw_question="Install all available software/check for updates? "
 
-    mountshare "$share"
+    mount_share "$share"
     echo
-    ask "$makeq" && make_manifest
+    ask "$make_manifest_question" && make_manifest
     echo
-    ask "$addcatq" && { get_catalogs; clear; echo; add_catalogs; }
+    ask "$add_catalogs_question" && { get_catalogs; clear; echo; add_catalogs; }
     echo
-    if ask "$checkq"; then
+    if ask "$check_sw_question"; then
 	clear
 	echo
 	managedsoftwareupdate --checkonly | grep '+' &
@@ -300,7 +299,7 @@ main () {
 	sw_available="$?"
 	if [[ "$sw_available" -eq 0 ]]; then
 	    echo
-	    if ask "$installq"; then
+	    if ask "$install_sw_question"; then
 		clear
 		echo
 		managedsoftwareupdate --installonly | grep -Ei 'Installing|installed'
@@ -317,5 +316,5 @@ main () {
 ###############################################################################
 
 clear
-checkroot
+check_root
 main "$@"
