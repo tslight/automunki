@@ -210,6 +210,20 @@ get_selection () {
     done
 }
 
+# provide user feedback for long running commands.
+spinner () {
+    local spin pid="$1" str="$2"
+    spin='-\|/'
+    i=0
+    while ps -p "$pid" &> /dev/null; do
+	local -i i=$(( (i+1) %4 ))
+	printf "\\r%s: ${spin:$i:1} " "$str"
+	sleep .1
+    done
+    # 79 expansions of the space character to blank last line to standard terminal widths
+    printf "\\r"; printf " %0.s" {0..79}
+}
+
 ###############################################################################
 #                         MUNKI MANIPULATION FUNCTIONS                        #
 ###############################################################################
@@ -298,9 +312,12 @@ main () {
     if ask "$checkq"; then
 	clear
 	echo
-	echo "Available software:"
-	echo
-	if managedsoftwareupdate --checkonly | grep '+'; then
+	managedsoftwareupdate --checkonly | grep '+' &
+	pid="$!"
+	spinner "$pid" "Checking for software"
+	wait "$pid"
+	sw_available="$?"
+	if [[ "$sw_available" -eq 0 ]]; then
 	    echo
 	    if ask "$installq"; then
 		clear
