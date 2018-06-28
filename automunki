@@ -31,8 +31,6 @@ $(basename "$0") [AFS or Samba Share URL]
 AUTOMATED MUNKI CLIENT CONFIGURATION
 ------------------------------------
 
-This script must be run as root.
-
 It takes an AFS or Samba Share as an optional argument. If none are given you
 will be prompted for them.
 
@@ -64,7 +62,7 @@ mountshare () {
     fi
 }
 
-# read in mount_smbfs url if no arg provided
+# read in mount_smbfs url if no arg provided, return share url
 getshare () {
     local arg="$1" share host path user pass
 
@@ -77,7 +75,7 @@ getshare () {
 	share="$arg"
     fi
 
-    mountshare "$share"
+    echo "$share"
 }
 
 ###############################################################################
@@ -136,13 +134,13 @@ checkroot () {
 }
 
 # takes an array as an argument and creates a checkbox selection menu for each
-# element of array.
-#
-# returns new array of selected items.
+# element of array. returns new array of selected items.
 get_selection () {
-    string="$1"
-    shift # short for shift 1 - so rest of items become menu items
-    selectall=false options=("$@") choices=()
+    local string="$1"; shift # reset first index of array to next element
+    local selectall=false
+    local -a options=("$@") choices=()
+    # needs to be global, rather than hacking a way to return a local array
+    declare -a selected=()
 
     while :; do
 	clear
@@ -214,12 +212,6 @@ get_selection () {
 #                         MUNKI MANIPULATION FUNCTIONS                        #
 ###############################################################################
 
-get_catalogs () {
-    get_selection "${CATALOGS[@]}"
-    SELECTED_CATALOGS=("${selected[@]}")
-    unset selected
-}
-
 check_manifest () {
     if plutil "$MANIFEST_PLIST" > /dev/null; then
 	return 0
@@ -227,18 +219,6 @@ check_manifest () {
 	echo "Error writing $SERIAL_NUMBER plist."
 	exit 1
     fi
-}
-
-add_catalogs () {
-    for key in "${!SELECTED_CATALOGS[@]}"; do
-	value="${SELECTED_CATALOGS[$key]}"
-	echo "Adding $value to catalogs of $SERIAL_NUMBER..."
-	plutil -insert catalogs."$key" -string "$value" "$MANIFEST_PLIST"
-	echo "Adding $value to included manifests of $SERIAL_NUMBER..."
-	plutil -insert included_manifests."$key" -string "$value" "$MANIFEST_PLIST"
-    done
-    echo
-    check_manifest && echo "Sucessfully added values to $SERIAL_NUMBER manifest."
 }
 
 write_manifest () {
@@ -275,21 +255,37 @@ make_manifest () {
     fi
 }
 
+add_catalogs () {
+    for key in "${!SELECTED_CATALOGS[@]}"; do
+	value="${SELECTED_CATALOGS[$key]}"
+	echo "Adding $value to catalogs of $SERIAL_NUMBER..."
+	plutil -insert catalogs."$key" -string "$value" "$MANIFEST_PLIST"
+	echo "Adding $value to included manifests of $SERIAL_NUMBER..."
+	plutil -insert included_manifests."$key" -string "$value" "$MANIFEST_PLIST"
+    done
+    echo
+    check_manifest && echo "Sucessfully added values to $SERIAL_NUMBER manifest."
+}
+
+get_catalogs () {
+    get_selection "${CATALOGS[@]}"
+    SELECTED_CATALOGS=("${selected[@]}")
+    unset selected
+}
+
 ###############################################################################
 #                                MAIN FUNCTION                                #
 ###############################################################################
 
 main () {
-    local share="$1"
+    local share=$(getshare "$1")
     local makeq="Create new manifest? "
     local addcatq="Add catalogs to manifest? "
     local addplistq="Add display name and user fields to manifest? "
     local checkq="Check for available software? "
     local installq="Install all available software/check for updates? "
 
-    clear
-    checkroot
-    getshare "$share"
+    mountshare "$share"
     echo
     ask "$makeq" && make_manifest
     echo
@@ -320,4 +316,6 @@ main () {
 #                                     RUN!                                    #
 ###############################################################################
 
+clear
+checkroot
 main "$@"
