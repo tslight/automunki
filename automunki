@@ -210,20 +210,6 @@ get_selection () {
     done
 }
 
-# provide user feedback for long running commands.
-spinner () {
-    local spin pid="$1" str="$2"
-    spin='-\|/'
-    i=0
-    while ps -p "$pid" &> /dev/null; do
-	local -i i=$(( (i+1) %4 ))
-	printf "\\r%s: ${spin:$i:1} " "$str"
-	sleep .1
-    done
-    # 79 expansions of the space character to blank last line to standard terminal widths
-    printf "\\r"; printf " %0.s" {0..79}
-}
-
 ###############################################################################
 #                         MUNKI MANIPULATION FUNCTIONS                        #
 ###############################################################################
@@ -251,6 +237,7 @@ add_catalogs () {
 	echo "Adding $value to included manifests of $SERIAL_NUMBER..."
 	plutil -insert included_manifests."$key" -string "$value" "$MANIFEST_PLIST"
     done
+    echo
     check_manifest && echo "Sucessfully added values to $SERIAL_NUMBER manifest."
 }
 
@@ -271,8 +258,12 @@ make_manifest () {
     if [[ -d "$MANIFESTS_DIR" ]]; then
 	if [[ -f "$MANIFEST_PLIST" ]]; then
 	    if ask "$sanityq"; then
-		rm "$MANIFEST_PLIST"
-		write_manifest
+		if rm "$MANIFEST_PLIST" &> /dev/null; then
+		    write_manifest
+		else
+		    echo "Deleting old $SERIAL_NUMBER manifest failed. Aborting."
+		    exit 1
+		fi
 	    else
 		echo "Leaving $MANIFEST_PLIST unchanged."
 	    fi
@@ -282,11 +273,6 @@ make_manifest () {
     else
 	echo "Cannot find $MANIFESTS_DIR. Is the repository mounted?"
     fi
-}
-
-display_manifest () {
-    echo "Newly created manifest details:"
-    manifestutil display-manifest "$SERIAL_NUMBER"
 }
 
 ###############################################################################
@@ -299,7 +285,7 @@ main () {
     local addcatq="Add catalogs to manifest? "
     local addplistq="Add display name and user fields to manifest? "
     local checkq="Check for available software? "
-    local installq="Install all available software? "
+    local installq="Install all available software/check for updates? "
 
     clear
     checkroot
@@ -309,27 +295,24 @@ main () {
     echo
     ask "$addcatq" && { get_catalogs; clear; echo; add_catalogs; }
     echo
-    display_manifest
-    echo
     if ask "$checkq"; then
+	clear
 	echo
-	software=("$(managedsoftwareupdate --checkonly | awk '/\+/ {print $2}')")
-	if [[ $(echo "${#software[@]}") =~ ^\s+$ ]]; then
-	    echo "Available Managed Installs:"
-	    echo
-	    for i in "${software[@]}"; do
-		printf "\\t%s\\n" "$i"
-	    done
+	echo "Available software:"
+	echo
+	if managedsoftwareupdate --checkonly | grep '+'; then
 	    echo
 	    if ask "$installq"; then
-		managedsoftwareupdate --installonly | sed '1,4d;$d' # get rid of output header & footer
+		clear
+		echo
+		# get rid of output header & footer
+		managedsoftwareupdate --installonly | grep -Ei 'Installing|installed'
 	    fi
 	else
-	    echo "You have all available managed installs."
-	    echo "Please check the Managed Software Center app to browse optional installs."
+	    echo "No new software or updates available for this machine."
 	fi
-	echo
     fi
+    echo
 }
 
 ###############################################################################
