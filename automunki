@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 ###############################################################################
-#                           DECLARE GLOBAL VARIABLES                          #
+#                           DECLARE CONSTANTS                                 #
 ###############################################################################
 
 MOUNT="/Volumes/MunkiRepo"
@@ -45,30 +45,6 @@ It carries out the following tasks:
 }
 
 ###############################################################################
-#                        USEFUL SANITY CHECK FUNCTIONS                        #
-###############################################################################
-
-checkroot () {
-    if [[ "$(id -u)" -ne 0 ]]; then
-	echo
-	echo "This script must be run as root."
-	usage
-	exit 1
-    fi
-}
-
-checkdir () {
-    local dir="$1"
-
-    if [[ ! -d "$dir" ]]; then
-	if ! mkdir -p "$dir"; then
-	    echo "Error creating $dir";
-	    exit 1
-	fi
-    fi
-}
-
-###############################################################################
 #                           SHARE MOUNTING FUNCTIONS                          #
 ###############################################################################
 
@@ -103,7 +79,7 @@ getshare () {
 }
 
 ###############################################################################
-#                             USER INPUT FUNCTIONS                            #
+#                             USEFUL PORTABLE FUNCTIONS                       #
 ###############################################################################
 
 # infinite loop to get simple user input
@@ -276,11 +252,13 @@ get_catalogs () {
 }
 
 add_catalogs () {
-    for c in "${SELECTED_CATALOGS[@]}"; do
-	echo "Adding $c to catalogs of $SERIAL_NUMBER..."
-	manifestutil add-catalog "$c" --manifest "$SERIAL_NUMBER"
+    for c in "${!SELECTED_CATALOGS[@]}"; do
+	echo "Adding ${SELECTED_CATALOGS[$c]} to catalogs of $SERIAL_NUMBER..."
+	# manifestutil add-catalog "$c" --manifest "$SERIAL_NUMBER"
+	plutil -insert catalogs."$c" -string '"${SELECTED_CATALOGS[$c]}"' "$manifest_path"
 	echo "Adding $c to included manifests of $SERIAL_NUMBER..."
-	manifestutil add-included-manifest "$c" --manifest "$SERIAL_NUMBER"
+	# manifestutil add-included-manifest "$c" --manifest "$SERIAL_NUMBER"
+	plutil -insert included_manifests."$c" -string '"${SELECTED_CATALOGS[$c]}"' "$manifest_path"
     done
 }
 
@@ -290,6 +268,34 @@ query_plist () {
     path="$2"
     value=$(plutil -extract "$key" xml1 -o - "$path" | awk -F '<|>' '/string/ {print $3}')
     echo "$value"
+}
+buildplist () {
+    local user host
+    AUTHOR="$1"
+    cat > foo.plist <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>catalogs</key>
+	<array>
+		<string>Deployments</string>
+	</array>
+	<key>display_name</key>
+	<string>mai-02586</string>
+	<key>included_manifests</key>
+	<array>
+		<string>Deployments</string>
+	</array>
+	<key>managed_installs</key>
+	<array/>
+	<key>managed_uninstalls</key>
+	<array/>
+	<key>user</key>
+	<string>toby.slight</string>
+</dict>
+</plist>
+EOF
 }
 
 add_plistkeys () {
