@@ -116,13 +116,13 @@ ask () {
 	# -n 1 for execution without return
 	read -rep "$question" ans;
 	case $ans in
-	    y|Y)
+	    [Yy]*)
 		return 0
 		;;
-	    n|N)
+	    [Nn]*)
 		return 1
 		;;
-	    q|Q)
+	    [Qq]*)
 		echo
 		exit 0
 		;;
@@ -133,6 +133,28 @@ ask () {
 		;;
 	esac
     done
+}
+
+# check for existence of a directory and if it doesn't exist create it.
+checkdir () {
+    local dir="$1"
+
+    if [[ ! -d "$dir" ]]; then
+	if ! mkdir -p "$dir"; then
+	    echo "Error creating $dir";
+	    exit 1
+	fi
+    fi
+}
+
+# check if running as root
+checkroot () {
+    if [[ "$(id -u)" -ne 0 ]]; then
+	echo;
+	echo "This script must be run as root."
+	usage
+	exit 1
+    fi
 }
 
 # takes an array as an argument and creates a checkbox selection menu for each
@@ -210,19 +232,33 @@ get_selection () {
     done
 }
 
+# provide user feedback for long running commands.
+spinner () {
+    local spin pid="$1" str="$2"
+    spin='-\|/'
+    i=0
+    while ps -p "$pid" &> /dev/null; do
+	local -i i=$(( (i+1) %4 ))
+	printf "\\r%s: ${spin:$i:1} " "$str"
+	sleep .1
+    done
+    # 79 expansions of the space character to blank last line to standard terminal widths
+    printf "\\r"; printf " %0.s" {0..79}
+}
+
 ###############################################################################
 #                         MUNKI MANIPULATION FUNCTIONS                        #
 ###############################################################################
 
-# add_repo () {
-#     repo=$(defaults read "$PLIST" SoftwareRepoURL)
-#     if [[ "$repo" != "$REPO" ]]; then
-#	echo "Setting repository URL to $REPO in $PLIST."
-#	defaults write "$PLIST" SoftwareRepoURL "$REPO"
-#     else
-#	echo "Repository URL already set to $REPO in $PLIST."
-#     fi
-# }
+add_repo () {
+    repo=$(defaults read "$PLIST" SoftwareRepoURL)
+    if [[ "$repo" != "$REPO" ]]; then
+	echo "Setting repository URL to $REPO in $PLIST."
+	defaults write "$PLIST" SoftwareRepoURL "$REPO"
+    else
+	echo "Repository URL already set to $REPO in $PLIST."
+    fi
+}
 
 configure () {
     manifestutil --configure
@@ -249,12 +285,12 @@ add_catalogs () {
 }
 
 # may come in handy...
-# query_plist () {
-#     key="$1"
-#     path="$2"
-#     value=$(plutil -extract "$key" xml1 -o - "$path" | awk -F '<|>' '/string/ {print $3}')
-#     echo "$value"
-# }
+query_plist () {
+    key="$1"
+    path="$2"
+    value=$(plutil -extract "$key" xml1 -o - "$path" | awk -F '<|>' '/string/ {print $3}')
+    echo "$value"
+}
 
 add_plistkeys () {
     host=$(hostname -s)
@@ -303,8 +339,6 @@ main () {
     display_manifest
     echo
     if ask "$checkq"; then
-	echo
-	echo "Checking for available managed installs..."
 	echo
 	software=("$(managedsoftwareupdate --checkonly | awk '/\+/ {print $2}')")
 	if [[ $(echo "${#software[@]}") =~ ^\s+$ ]]; then
