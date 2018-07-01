@@ -201,6 +201,7 @@ get_selections () {
 			break
 		    fi
 		done
+		msg=""
 		;;
 	esac
     done
