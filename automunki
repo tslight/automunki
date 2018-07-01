@@ -194,10 +194,11 @@ get_selections () {
 		    choices[input]="+"
 		fi
 		for i in "${!options[@]}"; do
-		    if [[ "${choices[i]}" == "" ]]; then
-			selectall=false
-		    elif [[ "${choices[i]}" == "+" ]]; then
+		    if [[ "${choices[i]}" ]]; then
 			selectall=true
+		    else
+			selectall=false
+			break
 		    fi
 		done
 		;;
