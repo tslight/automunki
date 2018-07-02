@@ -20,6 +20,8 @@ CATALOGS=(
     "SportsAndEnts"
 )
 
+SELECTED=()
+
 ###############################################################################
 #                                USAGE FUNCTION                               #
 ###############################################################################
@@ -139,8 +141,6 @@ get_selections () {
     local string="$1"; shift # reset first index of array to next element
     local selectall=false
     local -a options=("$@") choices=()
-    # needs to be global, rather than hacking a way to return a local array
-    declare -a selected=()
 
     while :; do
 	clear
@@ -206,7 +206,7 @@ get_selections () {
 	esac
     done
     for i in "${!options[@]}"; do
-	[[ "${choices[i]}" ]] && selected+=("${options[i]}")
+	[[ "${choices[i]}" ]] && SELECTED+=("${options[i]}")
     done
 }
 
@@ -258,8 +258,8 @@ make_manifest () {
 }
 
 add_catalogs () {
-    for key in "${!SELECTED_CATALOGS[@]}"; do
-	value="${SELECTED_CATALOGS[$key]}"
+    for key in "${!SELECTED[@]}"; do
+	value="${SELECTED[$key]}"
 	echo "Adding $value to catalogs of $SERIAL_NUMBER..."
 	plutil -insert catalogs."$key" -string "$value" "$MANIFEST_PLIST"
 	echo "Adding $value to included manifests of $SERIAL_NUMBER..."
@@ -271,8 +271,8 @@ add_catalogs () {
 
 get_catalogs () {
     get_selections "${CATALOGS[@]}"
-    SELECTED_CATALOGS=("${selected[@]}")
-    unset selected
+    clear; echo
+    add_catalogs
 }
 
 ###############################################################################
@@ -290,7 +290,7 @@ main () {
     echo
     ask "$make_manifest_question" && make_manifest
     echo
-    ask "$add_catalogs_question" && { get_catalogs; clear; echo; add_catalogs; }
+    ask "$add_catalogs_question" && get_catalogs
     echo
     if ask "$check_sw_question"; then
 	clear
