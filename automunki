@@ -291,7 +291,7 @@ main () {
     local check_sw_question="Check for available software? "
     local install_sw_question="Install all available software/check for updates? "
     local update_os_question="Update macOS? "
-    local reboot_question="Reboot Machine?"
+    local reboot_question="Reboot Machine? "
 
     mount_share "$share"
     echo
