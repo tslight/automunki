@@ -275,6 +275,11 @@ get_catalogs () {
     add_catalogs
 }
 
+update_os () {
+    clear; echo
+    softwareupdate -i --all
+}
+
 ###############################################################################
 #                                MAIN FUNCTION                                #
 ###############################################################################
@@ -285,6 +290,8 @@ main () {
     local add_catalogs_question="Add catalogs to manifest? "
     local check_sw_question="Check for available software? "
     local install_sw_question="Install all available software/check for updates? "
+    local update_os_question="Update macOS? "
+    local reboot_question="Reboot Machine?"
 
     mount_share "$share"
     echo
@@ -311,6 +318,9 @@ main () {
 	fi
     fi
     echo
+    ask "$update_os_question" && update_os
+    echo
+    ask "$reboot_question" && reboot
 }
 
 ###############################################################################
