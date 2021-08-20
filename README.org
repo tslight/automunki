@@ -1,0 +1,15 @@
+#+TITLE: AUTOMATED MUNKI CLIENT CONFIGURATION
+#+AUTHOR: Toby Slight
+
+*This script must be run as root.*
+
+It takes an AFS or Samba Share as an optional argument. If none are given you
+will be prompted for them.
+
+/It carries out the following tasks:/
+
+  1) Mount Munki repository via Samba or AFS at /Volumes/MunkiRepo.
+  2) Create new Munki manifest with machine's serial number as name.
+  3) Choose catalogs/included manifests to add newly created manifest to.
+  4) Check for and display available software.
+  5) Install all available software.

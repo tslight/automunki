@@ -1,0 +1,332 @@
+#!/usr/bin/env bash
+
+###############################################################################
+#                           DECLARE CONSTANTS                                 #
+###############################################################################
+
+HOSTNAME=$(hostname -s)
+SERIAL_NUMBER=$(ioreg -c IOPlatformExpertDevice -d 2 | awk -F\" '/IOPlatformSerialNumber/{print $(NF-1)}')
+
+MOUNT="/Volumes/MunkiRepo"
+MANIFESTS_DIR="$MOUNT/manifests"
+MANIFEST_PLIST="$MANIFESTS_DIR/$SERIAL_NUMBER"
+
+CATALOGS=(
+    "Choose catalogs to add $SERIAL_NUMBER to:"
+    "Creative"
+    "Deployments"
+    "IT_Testing"
+    "Mobile"
+    "SportsAndEnts"
+)
+
+SELECTED=()
+
+###############################################################################
+#                                USAGE FUNCTION                               #
+###############################################################################
+
+usage () {
+    echo "
+$(basename "$0") [AFS or Samba Share URL]
+
+AUTOMATED MUNKI CLIENT CONFIGURATION
+------------------------------------
+
+It takes an AFS or Samba Share as an optional argument. If none are given you
+will be prompted for them.
+
+It carries out the following tasks:
+
+  1) Mount Munki repository via Samba or AFS at /Volumes/MunkiRepo.
+  2) Create new Munki manifest with machine's serial number as name.
+  3) Choose catalogs/included manifests to add newly created manifest to.
+  4) Check for and display available software.
+  5) Install all available software.
+"
+}
+
+###############################################################################
+#                           SHARE MOUNTING FUNCTIONS                          #
+###############################################################################
+
+mount_share () {
+    local share="$1"
+
+    # .* is egrep AND/this search string followed by this search string.
+    if ! mount | grep -Eq "$MOUNT"; then
+	check_dir "$MOUNT"
+	# escape spaces in url encoding - http://www.degraeve.com/reference/urlencoding.php
+	if ! mount -t smbfs "${share// /%20}" "$MOUNT"; then
+	    echo "Could not mount $share at $MOUNT. Aborting."
+	    exit 1
+	fi
+    fi
+}
+
+# read in mount_smbfs url if no arg provided, return share url
+get_share () {
+    local arg="$1" share host path user pass
+
+    if [[ -z "$arg" ]]; then
+	# -r to avoid mangled backslashes, -e for readline, -s for no echo
+	read -rep "Share Hostname or IP Address: " host
+	read -rep "Share Path: " path
+	share="//$host/$path"
+    else
+	share="$arg"
+    fi
+
+    echo "$share"
+}
+
+###############################################################################
+#                             USEFUL PORTABLE FUNCTIONS                       #
+###############################################################################
+
+# infinite loop to get simple user input
+ask () {
+    local question="$1"
+
+    while :; do
+	# -e for readline bindings
+	# -r to not mangle backslashes
+	# -n 1 for execution without return
+	read -rep "$question" ans;
+	case $ans in
+	    [Yy]*)
+		return 0
+		;;
+	    [Nn]*)
+		return 1
+		;;
+	    [Qq]*)
+		echo
+		exit 0
+		;;
+	    *)
+		echo
+		echo "$ans is invalid. Enter (y)es, (n)o or (q)uit."
+		echo
+		;;
+	esac
+    done
+}
+
+# check for existence of a directory and if it doesn't exist create it.
+check_dir () {
+    local dir="$1"
+
+    if [[ ! -d "$dir" ]]; then
+	if ! mkdir -p "$dir"; then
+	    echo "Error creating $dir";
+	    exit 1
+	fi
+    fi
+}
+
+# check if running as root
+check_root () {
+    if [[ "$(id -u)" -ne 0 ]]; then
+	echo;
+	echo "This script must be run as root."
+	usage
+	exit 1
+    fi
+}
+
+# takes an array as an argument and creates a checkbox selection menu for each
+# element of array. returns new array of selected items.
+get_selections () {
+    local string="$1"; shift # reset first index of array to next element
+    local selectall=false
+    local -a options=("$@") choices=()
+
+    while :; do
+	clear
+	echo
+	echo "$string"
+	echo
+	echo "Enter the corresponding number to toggle a selection."
+	echo "Enter a to toggle all, r to reset selection or q to quit."
+	echo
+	for i in "${!options[@]}"; do
+	    printf "%3d%s) %s\\n" $((i+1)) "${choices[i]:- }" "${options[i]}"
+	done
+	echo
+
+	[[ "$msg" ]] && { echo "$msg"; echo; }
+
+	read -rep "----> " input
+
+	case "$input" in
+	    A|a)
+		if "$selectall"; then
+		    for i in "${!options[@]}"; do
+			choices[i]=""
+		    done
+		    selectall=false
+		else
+		    for i in "${!options[@]}"; do
+			choices[i]="+"
+		    done
+		    selectall=true
+		fi
+		;;
+	    Q|q)
+		break
+		;;
+	    R|r)
+		for i in "${!options[@]}"; do
+		    choices[i]=""
+		done
+		;;
+	    *)
+		# regex to catch digits between 1-99, but number must be less than size of array
+		if ! [[ "$input" =~ ^[1-9]$|^[1-9][0-9]+$ && "$input" -le "${#options[@]}" ]]; then
+		    msg="Invalid option: $input"
+		    continue
+		fi
+		((input--))
+		if [[ "${choices[input]}" ]]; then
+		    choices[input]=""
+		else
+		    choices[input]="+"
+		fi
+		for i in "${!options[@]}"; do
+		    if [[ "${choices[i]}" ]]; then
+			selectall=true
+		    else
+			selectall=false
+			break
+		    fi
+		done
+		msg=""
+		;;
+	esac
+    done
+    for i in "${!options[@]}"; do
+	[[ "${choices[i]}" ]] && SELECTED+=("${options[i]}")
+    done
+}
+
+###############################################################################
+#                         MUNKI MANIPULATION FUNCTIONS                        #
+###############################################################################
+
+check_manifest () {
+    if plutil "$MANIFEST_PLIST" > /dev/null; then
+	return 0
+    else
+	echo "Error writing $SERIAL_NUMBER plist."
+	exit 1
+    fi
+}
+
+write_manifest () {
+    read -rep "Enter a user name: " user
+    /usr/libexec/PlistBuddy -c "Add :catalogs array" "$MANIFEST_PLIST" > /dev/null
+    /usr/libexec/PlistBuddy -c "Add :display_name string $HOSTNAME" "$MANIFEST_PLIST"
+    /usr/libexec/PlistBuddy -c "Add :included_manifests array" "$MANIFEST_PLIST"
+    /usr/libexec/PlistBuddy -c "Add :managed_installs array" "$MANIFEST_PLIST"
+    /usr/libexec/PlistBuddy -c "Add :managed_uninstalls array" "$MANIFEST_PLIST"
+    /usr/libexec/PlistBuddy -c "Add :user string $user" "$MANIFEST_PLIST"
+    check_manifest && echo "Sucessfully created $SERIAL_NUMBER manifest."
+}
+
+make_manifest () {
+    local sanityq="$SERIAL_NUMBER already exists. Are you sure you want to overwrite it?! "
+
+    if [[ -d "$MANIFESTS_DIR" ]]; then
+	if [[ -f "$MANIFEST_PLIST" ]]; then
+	    if ask "$sanityq"; then
+		if rm "$MANIFEST_PLIST" &> /dev/null; then
+		    write_manifest
+		else
+		    echo "Deleting old $SERIAL_NUMBER manifest failed. Aborting."
+		    exit 1
+		fi
+	    else
+		echo "Leaving $MANIFEST_PLIST unchanged."
+	    fi
+	else
+	    write_manifest
+	fi
+    else
+	echo "Cannot find $MANIFESTS_DIR. Is the repository mounted?"
+    fi
+}
+
+add_catalogs () {
+    for key in "${!SELECTED[@]}"; do
+	value="${SELECTED[$key]}"
+	echo "Adding $value to catalogs of $SERIAL_NUMBER..."
+	plutil -insert catalogs."$key" -string "$value" "$MANIFEST_PLIST"
+	echo "Adding $value to included manifests of $SERIAL_NUMBER..."
+	plutil -insert included_manifests."$key" -string "$value" "$MANIFEST_PLIST"
+    done
+    echo
+    check_manifest && echo "Sucessfully added values to $SERIAL_NUMBER manifest."
+}
+
+get_catalogs () {
+    get_selections "${CATALOGS[@]}"
+    clear; echo
+    add_catalogs
+}
+
+update_os () {
+    clear; echo
+    softwareupdate -i --all
+}
+
+###############################################################################
+#                                MAIN FUNCTION                                #
+###############################################################################
+
+main () {
+    local share=$(get_share "$1")
+    local make_manifest_question="Create new manifest? "
+    local add_catalogs_question="Add catalogs to manifest? "
+    local check_sw_question="Check for available software? "
+    local install_sw_question="Install all available software/check for updates? "
+    local update_os_question="Update macOS? "
+    local reboot_question="Reboot Machine? "
+
+    mount_share "$share"
+    echo
+    ask "$make_manifest_question" && make_manifest
+    echo
+    ask "$add_catalogs_question" && get_catalogs
+    echo
+    if ask "$check_sw_question"; then
+	clear
+	echo
+	managedsoftwareupdate --checkonly | grep '+' &
+	pid="$!"
+	wait "$pid"
+	sw_available="$?"
+	if [[ "$sw_available" -eq 0 ]]; then
+	    echo
+	    if ask "$install_sw_question"; then
+		clear
+		echo
+		managedsoftwareupdate --installonly | grep -Ei 'Installing|installed'
+	    fi
+	else
+	    echo "No new software or updates available for this machine."
+	fi
+    fi
+    echo
+    ask "$update_os_question" && update_os
+    echo
+    ask "$reboot_question" && reboot
+}
+
+###############################################################################
+#                                     RUN!                                    #
+###############################################################################
+
+clear
+check_root
+main "$@"
